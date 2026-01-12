@@ -1,0 +1,12 @@
+[options]
+db_host = localhost
+db_port = 5432
+db_user = odoo
+addons_path = /srv/odoo/addons,/srv/odoo/odoo/addons,/srv/odoo/odoo-community-addons,/srv/odoo/odoo-custom-addons
+limit_memory_hard = 1677721600
+limit_memory_soft = 629145600
+limit_request = 8192
+limit_time_cpu = 600
+limit_time_real = 1200
+max_cron_threads = 2
+workers = 4

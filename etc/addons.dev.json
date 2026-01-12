@@ -1,0 +1,239 @@
+[
+	{
+		"repo": "https://github.com/OCA/server-ux.git",
+		"branch": "18.0",
+		"repo_dir": "server-ux",
+		"addons": [
+			"date_range",
+			"date_range_account",
+			"developer_menu"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/l10n-switzerland.git",
+		"branch": "18.0",
+		"repo_dir": "l10n-switzerland",
+		"addons": [
+			"l10n_ch_adr_report"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/reporting-engine.git",
+		"branch": "18.0",
+		"repo_dir": "reporting-engine",
+		"addons": [
+			"report_csv",
+			"report_qr",
+			"report_xlsx",
+			"report_xlsx_helper",
+			"report_xml"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/mis-builder.git",
+		"branch": "18.0",
+		"repo_dir": "mis-builder",
+		"addons": [
+			"mis_builder",
+			"mis_builder_budget"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/partner-contact.git",
+		"branch": "18.0",
+		"repo_dir": "partner-contact",
+		"addons": [
+			"partner_address_street3",
+			"partner_contact_birthdate",
+			"partner_contact_gender",
+			"partner_contact_nationality",
+			"partner_firstname",
+			"partner_second_lastname"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/bank-payment.git",
+		"branch": "18.0",
+		"repo_dir": "bank-payment",
+		"addons": [
+			"account_banking_pain_base",
+			"account_banking_sepa_direct_debit"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/account-financial-tools.git",
+		"branch": "18.0",
+		"repo_dir": "account-financial-tools",
+		"addons": [
+			"account_fiscal_year",
+			"account_journal_lock_date",
+			"account_move_print",
+			"account_asset_management",
+			"account_asset_number",
+			"account_move_name_sequence",
+			"account_usability"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/hr.git",
+		"branch": "18.0",
+		"repo_dir": "hr",
+		"addons": [
+			"hr_contract_renew",
+			"hr_employee_birthday_mail",
+			"hr_employee_firstname",
+			"hr_employee_id"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/payroll.git",
+		"branch": "18.0",
+		"repo_dir": "payroll",
+		"addons": [
+			"payroll",
+			"payroll_account"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/partner-contact.git",
+		"branch": "18.0",
+		"repo_dir": "partner-contact",
+		"addons": [
+			"partner_contact_personal_information_page",
+			"partner_address_street3",
+			"partner_contact_birthdate",
+			"partner_contact_gender",
+			"partner_contact_nationality",
+			"partner_firstname",
+			"partner_second_lastname"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/bank-payment.git",
+		"branch": "18.0",
+		"repo_dir": "bank-payment",
+		"addons": [
+			"account_banking_pain_base",
+			"account_banking_sepa_direct_debit"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/account-financial-tools.git",
+		"branch": "18.0",
+		"repo_dir": "account-financial-tools",
+		"addons": [
+			"account_fiscal_year",
+			"account_journal_lock_date",
+			"account_move_print",
+			"account_asset_management",
+			"account_asset_number",
+			"account_move_name_sequence",
+			"account_usability"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/hr.git",
+		"branch": "18.0",
+		"repo_dir": "hr",
+		"addons": [
+			"hr_contract_renew",
+			"hr_employee_birthday_mail",
+			"hr_employee_firstname",
+			"hr_employee_id"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/payroll.git",
+		"branch": "18.0",
+		"repo_dir": "payroll",
+		"addons": [
+			"payroll",
+			"payroll_account"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/hr-expense.git",
+		"branch": "18.0",
+		"repo_dir": "hr-expense",
+		"addons": [
+			"hr_expense_cancel",
+			"hr_expense_invoice",
+			"hr_expense_payment",
+			"hr_expense_sequence"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/bank-statement-import.git",
+		"branch": "18.0",
+		"repo_dir": "bank-statement-import",
+		"addons": [
+			"account_statement_import_base",
+			"account_statement_import_camt",
+			"account_statement_import_camt54",
+			"account_statement_import_file"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/account-analytic.git",
+		"branch": "18.0",
+		"repo_dir": "account-analytic",
+		"addons": [
+			"account_analytic_required",
+			"account_analytic_parent",
+			"account_analytic_sequence",
+			"account_analytic_tag",
+			"analytic_base_department",
+			"analytic_hr_department_restriction",
+			"hr_expense_analytic_tag"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/account-reconcile.git",
+		"branch": "18.0",
+		"repo_dir": "account-reconcile",
+		"addons": [
+			"account_statement_base",
+			"account_reconcile_oca",
+			"account_reconcile_model_oca",
+			"account_move_base_import"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/multi-company.git",
+		"branch": "18.0",
+		"repo_dir": "multi-company",
+		"addons": [
+			"base_multi_company",
+			"account_invoice_inter_company",
+			"hr_employee_multi_company",
+			"partner_multi_company",
+			"product_multi_company"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/rest-framework.git",
+		"branch": "18.0",
+		"repo_dir": "rest-framework",
+		"addons": [
+			"base_rest",
+			"base_rest_auth_api_key",
+			"base_rest_pydantic",
+			"fastapi",
+			"fastapi_auth_api_key",
+			"pydantic"
+		]
+	},
+	{
+		"repo": "https://github.com/OCA/knowledge.git",
+		"branch": "18.0",
+		"repo_dir": "knowledge",
+		"addons": [
+			"document_knowledge",
+			"document_page",
+			"document_page_access_group",
+			"document_page_group",
+			"document_page_reference",
+			"document_page_tag"
+		]
+	},
+]
