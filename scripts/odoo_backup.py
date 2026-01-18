@@ -125,47 +125,30 @@ def save_json(path, data):
     with open(path, "w") as f:
         json.dump(data, f, indent=4)
 
-def cleanup_unused_images(images_meta_file, backups_index_file):
-    """Entfernt alte Docker-Images, die in keinem Backup mehr referenziert sind."""
-    images_meta = load_json(images_meta_file)
-    backups_index = load_json(backups_index_file)
+def set_backup_permissions(path):
+    """Setzt Ownership und Zugriffsrechte für Backup-Dateien."""
+    import grp, pwd
+    try:
+        # gewünschte Gruppe
+        group_name = "odoo"
+        gid = grp.getgrnam(group_name).gr_gid
+        uid = pwd.getpwnam("root").pw_uid
+        os.chown(path, uid, gid)
+        os.chmod(path, 0o640)
+        logging.debug(f"Rechte gesetzt für {path} (root:{group_name}, 0640)")
+    except KeyError:
+        logging.warning("Gruppe 'odoo' nicht gefunden – bitte manuell anlegen.")
+    except Exception as e:
+        logging.warning(f"Konnte Rechte nicht setzen für {path}: {e}")
 
-    if not images_meta:
-        logging.info("Keine Image-Metadaten gefunden – nichts zu bereinigen.")
-        return
-
-    # Alle aktuell genutzten Image-IDs sammeln
-    used_ids = set()
-    for entry in backups_index:
-        img_id = entry.get("image_id")
-        if img_id:
-            used_ids.add(img_id)
-
-    removed = 0
-    for img_id, info in list(images_meta.items()):
-        if img_id not in used_ids:
-            img_path = info.get("path")
-            logging.info(f"Bereinige nicht referenziertes Image: {img_id}")
-            if img_path and os.path.exists(img_path):
-                try:
-                    os.remove(img_path)
-                    logging.info(f"Image-Datei entfernt: {img_path}")
-                except Exception as e:
-                    logging.warning(f"Konnte {img_path} nicht löschen: {e}")
-            images_meta.pop(img_id, None)
-            removed += 1
-
-    if removed > 0:
-        save_json(images_meta_file, images_meta)
-        logging.info(f"{removed} ungenutzte Docker-Images entfernt und Metadaten aktualisiert.")
-    else:
-        logging.info("Keine verwaisten Docker-Images gefunden.")
-
+# =========================================================
+# === META / INDEX FUNCTIONS===============================
+# =========================================================
 def reconcile_manual_backups(backups_index_file):
     """
     Prüft alle manuellen Backups im Dateisystem und passt den Index an:
     - Entfernt Einträge, deren Dateien fehlen
-    - Option: fügt neue manuelle Backup-Dateien hinzu, falls sie nicht im Index stehen
+    - Fügt neue manuelle Backup-Dateien hinzu, falls sie nicht im Index stehen
     """
     index_data = load_json(backups_index_file)
     if not isinstance(index_data, list):
@@ -182,50 +165,60 @@ def reconcile_manual_backups(backups_index_file):
     removed = 0
     added = 0
 
-    # 1. Entferne verwaiste Indexeinträge
+    # 1️⃣ – Entferne verwaiste Indexeinträge
     for e in index_data:
         if e.get("type") == "manual":
             archive_path = e.get("archive_path")
             if not archive_path or not os.path.exists(archive_path):
-                logging.debug(f"Entferne Index-Eintrag für nicht mehr vorhandenes manuelles Backup: {archive_path}")
+                logging.debug(
+                    f"Entferne Index-Eintrag für nicht mehr vorhandenes manuelles Backup: {archive_path}"
+                )
                 removed += 1
                 continue
         updated.append(e)
 
-    # 2. Optional: neue manuelle Backups ins Index aufnehmen
+    # 2️⃣ – Ergänze neue manuelle Backups ins Index, falls noch nicht enthalten
     known_paths = {item.get("archive_path") for item in updated}
     for file_path in existing_files:
         if file_path not in known_paths:
             size_mb = Path(file_path).stat().st_size / 1024 / 1024
-            # Versuche, image_id aus meta.json im Backup zu laden
+
+            # Versuche, Metadaten aus meta.json im Backup zu lesen
             meta_in_archive = None
             try:
-                with tarfile.open(path, "r:gz") as tar:
+                with tarfile.open(file_path, "r:gz") as tar:
                     member = tar.getmember("meta.json")
                     with tar.extractfile(member) as f:
                         meta_in_archive = json.load(f)
             except Exception as e:
-                logging.debug(f"meta.json konnte nicht gelesen werden aus {path}: {e}")
+                logging.debug(f"meta.json konnte nicht gelesen werden aus {file_path}: {e}")
 
-            image_id_from_meta = None
-            if meta_in_archive and "image_id" in meta_in_archive:
-                image_id_from_meta = meta_in_archive["image_id"]
-            else:
-                image_id_from_meta = "unknown"
+            # Image-ID & Image-Pfad aus meta.json übernehmen
+            image_id_from_meta = (
+                meta_in_archive.get("image_id") if meta_in_archive else "unknown"
+            )
+            image_path_from_meta = (
+                meta_in_archive.get("image_path") if meta_in_archive else "unknown"
+            )
+
+            # Neuen Eintrag erzeugen
             entry = {
                 "type": "manual",
-                "timestamp": datetime.datetime.fromtimestamp(Path(file_path).stat().st_mtime).isoformat(),
+                "timestamp": datetime.datetime.fromtimestamp(
+                    Path(file_path).stat().st_mtime
+                ).isoformat(),
                 "archive_path": file_path,
                 "size_mb": round(size_mb, 2),
                 "image_tag": docker_image_tag,
-                "image_id": meta_in_archive,
-                "sha256": compute_sha256(file_path)
+                "image_id": image_id_from_meta,
+                "image_path": image_path_from_meta,
+                "sha256": compute_sha256(file_path),
             }
             updated.append(entry)
             added += 1
             logging.info(f"Füge neues manuelles Backup dem Index hinzu: {file_path}")
 
-    # 3. Speichern
+    # 3️⃣ – Index speichern
     updated = sorted(updated, key=lambda e: e["timestamp"], reverse=True)
     with open(backups_index_file, "w") as f:
         json.dump(updated, f, indent=4)
@@ -235,7 +228,9 @@ def reconcile_manual_backups(backups_index_file):
     else:
         logging.info("Index-Abgleich: keine Änderungen erforderlich.")
 
-def reconcile_all_backups(index_file, images_meta_file):
+
+
+def reconcile_all_backups(index_file):
     """
     Synchronisiert den Backup-Index mit dem tatsächlichen Inhalt aller Backup-Ordner.
     - Fügt neue Archive hinzu
@@ -304,6 +299,7 @@ def reconcile_all_backups(index_file, images_meta_file):
                 "size_mb": round(size_mb, 2),
                 "image_tag": docker_image_tag,
                 "image_id": image_id_from_meta,
+                "image_path": meta_in_archive.get("image_path", "unknown"),
                 "sha256": compute_sha256(path)
             }
             cleaned_index.append(entry)
@@ -319,10 +315,10 @@ def reconcile_all_backups(index_file, images_meta_file):
     set_backup_permissions(index_file)
 
     # 4️⃣ – Abschließend: Docker-Images bereinigen
-    cleanup_unused_images(images_meta_file, index_file)
+    cleanup_unused_images()
     logging.info("=== Reconcile-Lauf abgeschlossen ===")
 
-def register_backup_in_index(archive_path, backup_type, image_tag, image_id):
+def register_backup_in_index(archive_path, backup_type, image_tag, image_id, image_path):
     """Trägt das Backup in die zentrale Index-Datei ein."""
     index_file = os.path.join(dir_backup_meta, "backups_index.json")
     index_data = []
@@ -343,6 +339,7 @@ def register_backup_in_index(archive_path, backup_type, image_tag, image_id):
         "size_mb": round(size_mb, 2),
         "image_tag": image_tag,
         "image_id": image_id,
+        "image_path": image_path,
         "sha256": compute_sha256(archive_path)
     }
 
@@ -398,24 +395,8 @@ def register_backup_in_index(archive_path, backup_type, image_tag, image_id):
     set_backup_permissions(archive_path)
     set_backup_permissions(index_file)
 
-def set_backup_permissions(path):
-    """Setzt Ownership und Zugriffsrechte für Backup-Dateien."""
-    import grp, pwd
-    try:
-        # gewünschte Gruppe
-        group_name = "odoo"
-        gid = grp.getgrnam(group_name).gr_gid
-        uid = pwd.getpwnam("root").pw_uid
-        os.chown(path, uid, gid)
-        os.chmod(path, 0o640)
-        logging.debug(f"Rechte gesetzt für {path} (root:{group_name}, 0640)")
-    except KeyError:
-        logging.warning("Gruppe 'odoo' nicht gefunden – bitte manuell anlegen.")
-    except Exception as e:
-        logging.warning(f"Konnte Rechte nicht setzen für {path}: {e}")
-
 # =========================================================
-# === BACKUP FUNCTIONEN ==================================
+# === BACKUP FUNCTIONEN ===================================
 # =========================================================
 
 def backup_database(target_dir):
@@ -432,54 +413,74 @@ def backup_database(target_dir):
     return dump_path
 
 def backup_directories_func(target_dir):
-    """Sichert definierte Verzeichnisse als tar.gz."""
+    """Sichert definierte Verzeichnisse (nur deren Inhalt) als tar.gz."""
     archives = []
     for src in backup_directories:
         name = Path(src).name
         archive_path = os.path.join(target_dir, f"{name}.tar.gz")
-        logging.info(f"Sichere {src} ...")
+        logging.info(f"Sichere Inhalt von {src} ...")
+
         with tarfile.open(archive_path, "w:gz") as tar:
-            tar.add(src, arcname=name)
+            # Nur den Inhalt (nicht das Verzeichnis selbst) hinzufügen
+            for item in os.listdir(src):
+                item_path = os.path.join(src, item)
+                tar.add(item_path, arcname=item)
         archives.append(archive_path)
     return archives
 
-def export_image_if_new(meta_file):
-    """Exportiert Docker-Image, falls neue ID, und komprimiert es danach."""
-    image_meta = load_json(meta_file)
+def export_image_if_new():
+    """
+    Exportiert das aktuelle Docker-Image des definierten Tags,
+    falls dieses Image noch nicht als komprimierte Backup-Datei vorhanden ist.
+
+    Rückgabe:
+        (image_id, image_path)
+    """
     current_id = get_image_id()
+    image_filename = f"odoo_image_{current_id.replace(':', '_')}.tar"
+    image_tar = os.path.join(dir_backup_images, image_filename)
+    # Je nach Compression wird Endung ergänzt
+    if image_compression == "gzip":
+        image_path = image_tar + ".gz"
+    elif image_compression == "bzip2":
+        image_path = image_tar + ".bz2"
+    elif image_compression == "xz":
+        image_path = image_tar + ".xz"
+    else:
+        image_path = image_tar
 
-    if current_id in image_meta:
-        logging.info("Image bereits vorhanden – kein Export nötig.")
-        return current_id
+    # --- Prüfen, ob das Image bereits existiert
+    if os.path.exists(image_path):
+        logging.info(f"Docker-Image bereits vorhanden: {image_path}")
+        return current_id, image_path
 
-    image_tar = os.path.join(dir_backup_images, f"odoo_image_{current_id.replace(':', '_')}.tar")
-    image_tgz = image_tar + ".gz"
-
+    # --- Exportieren
     logging.info(f"Exportiere neues Docker-Image: {docker_image_tag}")
     run_cmd(["docker", "save", "-o", image_tar, docker_image_tag])
 
-    # --- Kompression ---
-    logging.info(f"Image Compression using '{image_compression}' ...")
+    # --- Komprimieren falls nötig
     if image_compression == "gzip":
+        logging.info("Komprimiere Docker-Image (gzip) ...")
         run_cmd(["gzip", "-9", image_tar])
     elif image_compression == "bzip2":
+        logging.info("Komprimiere Docker-Image (bzip2) ...")
         run_cmd(["bzip2", "-9", image_tar])
     elif image_compression == "xz":
+        logging.info("Komprimiere Docker-Image (xz) ...")
         run_cmd(["xz", "-9", image_tar])
+    else:
+        logging.info("Keine Kompression gewählt – Image bleibt unkomprimiert.")
 
-    sha256 = compute_sha256(image_tgz)
-    image_meta[current_id] = {
-        "path": image_tgz,
-        "sha256": sha256,
-        "created": datetime.datetime.now().isoformat()
-    }
-    save_json(meta_file, image_meta)
+    # --- Hash & Logging
+    sha256 = compute_sha256(image_path)
+    size_mb = Path(image_path).stat().st_size / 1024 / 1024
+    logging.info(f"Docker-Image gespeichert: {image_path}")
+    logging.info(f"Größe: {size_mb:.1f} MB, SHA256: {sha256[:16]}…")
 
-    size_mb = Path(image_tgz).stat().st_size / 1024 / 1024
-    logging.info(f"Image gespeichert und komprimiert: {image_tgz} ({size_mb:.1f} MB)")
-    return current_id
+    return current_id, image_path
 
-def create_archive(backup_type, files, image_id, image_meta_file):
+
+def create_archive(backup_type, files, image_id, image_path):
     """Erstellt das Backup-Archiv mit Metadaten."""
     now = datetime.datetime.now()
 
@@ -495,13 +496,26 @@ def create_archive(backup_type, files, image_id, image_meta_file):
 
     archive_path = os.path.join(base_dir, name)
 
+    dir_mappings = []
+    for src in backup_directories:
+        name = Path(src).name
+        dir_mappings.append({
+            "directory": src,
+            "file": f"{name}.tar.gz"
+        })
+
     meta = {
         "timestamp": now.isoformat(),
         "type": backup_type,
-        "db": {"container": db_container, "user": db_user, "name": db_name},
+        "db": {
+            "container": db_container,
+            "user": db_user,
+            "name": db_name
+        },
         "image_tag": docker_image_tag,
         "image_id": image_id,
-        "directories": backup_directories,
+        "image_path": image_path,
+        "directories": dir_mappings,
         "files": [os.path.basename(f) for f in files]
     }
 
@@ -606,8 +620,13 @@ def restore_backup(archive_path, target_dir, port=10014, start_container=True):
     meta = load_json(meta_file)
     image_id   = meta.get("image_id")
     image_tag  = meta.get("image_tag")
+    image_tar  = meta.get('image_path')
     directories = meta.get("directories", [])
     db_meta     = meta.get("db", {})
+
+    if not image_tar or not os.path.exists(image_tar):
+        logging.error(f"Docker Image file not found: {image_tar}")
+        sys.exit(1)
 
     logging.info(f"Found Backup: {meta.get('timestamp')} (Image-ID: {image_id})")
 
@@ -616,10 +635,6 @@ def restore_backup(archive_path, target_dir, port=10014, start_container=True):
     # -------------------------------------------------------
     safe_tag = f"{image_tag}-RESTORE-{image_id[7:14]}"  # z. B. blicki/odoo:18.0-PROD-RESTORE-d5773b9
     logging.info(f"Preparing secure restore of Docker image as '{safe_tag}' ...")
-
-    image_meta_file = os.path.join(dir_backup_meta, "images.json")
-    image_info = load_json(image_meta_file).get(image_id, {})
-    image_tar = image_info.get("path")
 
     if not image_tar or not os.path.exists(image_tar):
         logging.error(f"Docker image file not found: {image_tar}")
@@ -673,17 +688,43 @@ def restore_backup(archive_path, target_dir, port=10014, start_container=True):
 
 
     # -------------------------------------------------------
-    # 3. Zielverzeichnisse wiederherstellen
+    # 3. Zielverzeichnisse wiederherstellen (neue Struktur aus meta["directories"])
     # -------------------------------------------------------
     Path(target_dir).mkdir(parents=True, exist_ok=True)
-    for archive_name in tmp_dir.glob("*.tar.gz"):
-        if archive_name.name.startswith("odoo-db"):
-            continue  # Datenbank-Dump separat
-        dest_path = Path(target_dir) / archive_name.stem
+
+    # meta["directories"] ist jetzt eine Liste von Mappings {directory, file}
+    for mapping in meta.get("directories", []):
+        src_dir = mapping.get("directory")
+        archive_file = mapping.get("file")
+
+        if not archive_file:
+            logging.warning(f"Kein 'file'-Eintrag gefunden für {src_dir} – übersprungen.")
+            continue
+
+        archive_path = tmp_dir / archive_file
+        if not archive_path.exists():
+            logging.warning(f"Archiv {archive_file} fehlt im Backup-Archiv – übersprungen.")
+            continue
+
+        # Zielpfad: entweder absolute Entsprechung oder unterhalb target_dir
+        # Falls du Prod→Test ersetzen möchtest:
+        dest_dir = src_dir.replace("odoo-prod", Path(target_dir).name)
+        dest_path = Path(dest_dir)
         dest_path.mkdir(parents=True, exist_ok=True)
-        logging.info(f"Extracting {archive_name.name} → {dest_path}")
-        with tarfile.open(archive_name, "r:gz") as tar:
-            tar.extractall(dest_path)
+
+        print(f"📦 Entpacke {archive_file} → {dest_path}")
+        logging.info(f"Extracting {archive_file} → {dest_path}")
+
+        try:
+            # Entpacken mit sudo auf dem Host, falls nötig
+            cmd = ["sudo", "tar", "xzf", str(archive_path), "-C", str(dest_path)]
+            run_cmd(cmd)
+        except SystemExit:
+            logging.error(f"Fehler beim Entpacken von {archive_file}")
+            sys.exit(1)
+
+    logging.info("Alle definierten Verzeichnisse aus meta.json erfolgreich wiederhergestellt.")
+
 
     # -------------------------------------------------------
     # 4. PostgreSQL-Container für Restore
@@ -743,25 +784,63 @@ def restore_backup(archive_path, target_dir, port=10014, start_container=True):
 
     logging.info("Restore finished.")
 
+# =========================================================
+# === CLEANUP FUNCTIONS====================================
+# =========================================================
+
+def cleanup_unused_images():
+    """Entfernt alte Docker-Image-Dateien, die in keinem Backup mehr referenziert sind."""
+    backup_index_file = os.path.join(dir_backup_meta, "backups_index.json")
+    images_dir = Path(dir_backup_images)
+
+    if not images_dir.exists():
+        logging.info("Kein Image-Verzeichnis vorhanden – nichts zu tun.")
+        return
+
+    index_data = load_json(backup_index_file)
+    if not isinstance(index_data, list):
+        logging.warning("Backup-Index leer oder ungültig – keine Image-Bereinigung.")
+        return
+
+    # 🔎 Alle Image-Dateien im Filesystem erfassen
+    all_image_files = {str(p) for p in images_dir.glob("odoo_image_*.tar*")}
+
+    # 🔎 Alle im Index referenzierten Pfade
+    used_image_files = {b.get("image_path") for b in index_data if b.get("image_path")}
+    used_image_files = {str(Path(p)) for p in used_image_files if p not in (None, "unknown")}
+
+    # 🔎 Herausfinden, was gelöscht werden darf
+    unused = all_image_files - used_image_files
+
+    if not unused:
+        logging.info("Keine verwaisten Docker-Images gefunden.")
+        return
+
+    for img in sorted(unused):
+        try:
+            os.remove(img)
+            logging.info(f"Altes Image gelöscht: {img}")
+        except Exception as e:
+            logging.warning(f"Konnte {img} nicht löschen: {e}")
+
 
 # =========================================================
-# === MAIN ===============================================
+# === MAIN ================================================
 # =========================================================
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: odoo_backup.py [hourly|daily|manual|restore]")
+        print("Usage: odoo_backup.py [hourly|daily|manual|restore|reconcile|list]")
         sys.exit(1)
 
     mode = sys.argv[1].lower()
     ensure_directories()
-    image_meta_file = os.path.join(dir_backup_meta, "images.json")
+    index_file = os.path.join(dir_backup_meta, "backups_index.json")
 
     # =========================================================
     # === LIST MODE ===========================================
     # =========================================================
     if mode == "list":
-        index_file = os.path.join(dir_backup_meta, "backups_index.json")
         data = load_json(index_file)
         if not data:
             print("Keine Einträge im Backup-Index vorhanden.")
@@ -776,9 +855,8 @@ def main():
     # === RECONCILE MODE ======================================
     # =========================================================
     if mode == "reconcile":
-        index_file = os.path.join(dir_backup_meta, "backups_index.json")
-        images_meta_file = os.path.join(dir_backup_meta, "images.json")
-        reconcile_all_backups(index_file, images_meta_file)
+        reconcile_all_backups(index_file)
+        cleanup_unused_images()
         sys.exit(0)
 
     # =========================================================
@@ -804,50 +882,49 @@ def main():
     backup_type = mode
     logging.info(f"Start Backup ({backup_type}) ...")
 
+    # --- temporäres Arbeitsverzeichnis vorbereiten ---
     tmp_dir = Path("/tmp/odoo_backup_tmp")
     if tmp_dir.exists():
         shutil.rmtree(tmp_dir)
     tmp_dir.mkdir(exist_ok=True)
 
-    # --- DB & Dateien sichern ---
+    # --- 1. DB & relevante Verzeichnisse sichern ---
     files = []
     files.append(backup_database(tmp_dir))
     files.extend(backup_directories_func(tmp_dir))
 
-    # --- Image-Handling ---
-    if backup_type in ["daily", "manual"]:
-        image_id = export_image_if_new(image_meta_file)
-    else:
-        image_id = get_image_id()  # Referenz aufnehmen, ohne Export
+    # --- 2. Docker-Image prüfen/exportieren ---
+    # immer export_image_if_new(): Funktion selbst prüft, ob Datei neu ist
+    image_id, image_path = export_image_if_new()
 
-    # --- Archiv erstellen ---
-    archive_path = create_archive(backup_type, files, image_id, image_meta_file)
+    # --- 3. Archiv erstellen ---
+    archive_path = create_archive(backup_type, files, image_id, image_path)
     shutil.rmtree(tmp_dir)
 
-    # --- Retention ---
-    if backup_type == "daily":
-        cleanup_old_backups(dir_backup_daily, retention_daily)
-    elif backup_type == "manual":
-        cleanup_old_backups(dir_backup_manual, retention_manual)
-
-    # --- Index-File aktualisieren ---
+    # --- 4. Index aktualisieren ---
     register_backup_in_index(
         archive_path=archive_path,
         backup_type=backup_type,
         image_tag=docker_image_tag,
-        image_id=image_id
+        image_id=image_id,
+        image_path=image_path
     )
 
-    # --- Docker-Images bereinigen ---
-    cleanup_unused_images(
-        images_meta_file=image_meta_file,
-        backups_index_file=os.path.join(dir_backup_meta, "backups_index.json")
-    )
+    # --- 5. Retention anwenden ---
+    if backup_type == "daily":
+        cleanup_old_backups(dir_backup_daily, retention_daily)
+    elif backup_type == "manual":
+        cleanup_old_backups(dir_backup_manual, retention_manual)
+    elif backup_type == "hourly":
+        cleanup_old_backups(dir_backup_hourly, 2)
 
-    # --- Manuelle Backups abgleichen ---
-    reconcile_manual_backups(
-        backups_index_file=os.path.join(dir_backup_meta, "backups_index.json")
-    )
+    # --- 6. Ungenutzte Docker-Images löschen ---
+    cleanup_unused_images()
+
+    # --- 7. Manuelle Backups abgleichen ---
+    #    Stellt sicher, dass alle existierenden manual-Backups
+    #    korrekt im Index enthalten sind (und verwaiste entfernt werden)
+    reconcile_manual_backups(index_file)
 
     logging.info(f"{backup_type.upper()} Backup successfully completed.")
 
