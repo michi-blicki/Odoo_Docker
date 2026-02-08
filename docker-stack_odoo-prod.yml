@@ -1,0 +1,114 @@
+services:
+  db:
+    image: postgres:16
+    restart: always
+    command: "postgres -c config_file=/etc/postgresql/postgresql.conf"
+    environment:
+      - POSTGRES_PASSWORD=Och53nr41ns6ra55e_29
+      - POSTGRES_USER=odoo
+      - PGUSER=odoo
+      - POSTGRES_DB=odoo
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready", "-U", "odoo", "-d", "odoo"]
+      interval: 2s
+      timeout: 60s
+      retries: 20
+      start_period: 1s
+    networks:
+      - net
+      - central_management
+    volumes:
+      - "postgres_conf:/etc/postgresql:rw"
+      - "postgres_data:/var/lib/postgresql/data:rw"
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == lxerp01
+      restart_policy:
+        condition: any
+
+  app:
+    image: blicki/odoo:18.0-PROD
+    restart: always
+    depends_on:
+      - db
+    environment:
+      - ODOO_DB_HOST=odoo-prod_db.odoo-prod_net
+      - ODOO_DB_PORT=5432
+      - ODOO_DB_USER=odoo
+      - ODOO_DB_NAME=odoo
+      - ODOO_DB_PASSWORD=Och53nr41ns6ra55e_29
+      - ODOO_ADMIN_PASSWORD=Ch4u3s1m83si2025v2
+      - ODOO_LOGFILE=/var/log/odoo/odoo.log
+      - ODOO_LOGROTATE=False
+      - ODOO_WITHOUT_DEMO=all
+      - TZ=Europe/Zurich
+    networks:
+      - net
+      - proxy_public
+    volumes:
+      - "odoo_data:/var/lib/odoo:rw"
+      - "odoo_local_share:/srv/odoo/.local/share/Odoo:rw"
+      - "odoo_custom_addons:/srv/odoo/odoo-custom-addons:ro"
+      - "odoo_logs:/var/log/odoo:rw"
+    deploy:
+      replicas: 0
+      placement:
+        constraints:
+          - node.hostname == lxerp01
+      restart_policy:
+        condition: any
+
+volumes:
+  postgres_conf:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /srv/gfs-storage/odoo-prod/postgresql_conf
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /srv/gfs-storage/odoo-prod/postgresql_data
+
+  odoo_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /srv/gfs-storage/odoo-prod/odoo_data
+  odoo_local_share:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /srv/gfs-storage/odoo-prod/odoo_local_share
+  odoo_custom_addons:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /srv/gfs-storage/odoo-prod/odoo_custom_addons
+  odoo_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /srv/gfs-storage/odoo-prod/odoo_logs
+
+networks:
+  net:
+    driver: overlay
+    attachable: true
+    ipam:
+      config:
+        - subnet: 172.20.40.16/28
+  proxy_public:
+    name: proxy_public
+    external: true
+  central_management:
+    name: central_management
+    external: true

@@ -1,0 +1,36 @@
+stacks:
+  odoo-prod:
+    name: odoo-prod
+    network: net
+    db:
+      type: postgres
+      host: db
+      user: odoo
+      name: odoo
+      password: Och53nr41ns6ra55e_29
+      image: postgres:16
+    images:
+      - blicki/odoo:18.0-PROD
+    backup_dirs:
+      - /srv/gfs-storage/odoo-prod/odoo_local_share
+      - /srv/gfs-storage/odoo-prod/odoo_custom_addons
+      - /srv/gfs-storage/odoo-prod/odoo_data
+      - /srv/gfs-storage/odoo-prod/scripts
+
+  psono:
+    name: psono
+    network: net
+    db:
+      type: postgres
+      host: db
+      user: psono
+      name: psono
+      password: 2nFmqGZk
+      image: postgres:14
+    backup_dirs:
+      - /srv/gfs-storage/psono/psono_server_conf
+      - /srv/gfs-storage/psono/postgresql_conf
+      - /srv/gfs-storage/psono/psono_client_conf
+      - /srv/gfs-storage/psono/psono_file_server_conf
+      - /srv/gfs-storage/psono/psono_server_conf
+      - /srv/gfs-storage/psono/scripts
